@@ -1,0 +1,22 @@
+server:
+  host: 127.0.0.1
+  port: 8000
+  secret_key: ""
+  dashboard_token: ""
+  agent_offline_after: 90
+
+database:
+  path: ""
+
+rules:
+  file: rules.yaml
+
+retention:
+  events_days: 7
+  metrics_days: 7
+  alerts_days: 180
+  max_events: 200000
+
+notifications:
+  ntfy_topic: "wlf-dev"
+  min_severity: "high"

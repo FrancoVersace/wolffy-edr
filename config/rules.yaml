@@ -1,0 +1,914 @@
+rules:
+  - id: WLF-1001
+    name: Herramienta ofensiva ejecutada
+    description: Ejecucion de una herramienta de pentesting o credential dumping conocida.
+    severity: high
+    event_type: process_start
+    mitre: T1588.002
+    cooldown: 120
+    match:
+      - {field: name, op: in, value: [nmap, masscan, sqlmap, hydra, medusa, msfconsole, msfvenom, mimikatz, lazagne, responder, crackmapexec, netexec, john, hashcat, ettercap, bettercap, nikto, gobuster, ffuf, wpscan, evil-winrm, unshadow]}
+    message: "Herramienta ofensiva '{name}' ejecutada por {username} (PID {pid}, padre {parent_name}): {cmdline}"
+
+  - id: WLF-1002
+    name: Patron de shell inversa
+    description: Linea de comandos con un patron tipico de shell inversa.
+    severity: critical
+    event_type: process_start
+    mitre: T1059.004
+    cooldown: 60
+    match:
+      - field: cmdline
+        op: regex
+        value: '(?i)(-i\s*>&?\s*/dev/(tcp|udp)/|/dev/(tcp|udp)/\S+\s+0>&1|\b(nc|ncat|netcat)\b[^|;]*\s-[a-z]*[ec]\s+\S*(sh|bash)\b|socket\.socket\(.*(subprocess|pty\.spawn|os\.dup2)|\bsocat\b.*\bexec:\S*(sh|bash)|\b(php|perl|ruby)\b\s+-[a-z]*\s.*(fsockopen|socket\s*\())'
+    message: "Posible shell inversa por {username} (PID {pid}): {cmdline}"
+
+  - id: WLF-1003
+    name: Ejecucion desde directorio temporal
+    description: Binario o script lanzado desde /tmp, /var/tmp o /dev/shm.
+    severity: medium
+    event_type: process_start
+    platforms: [linux]
+    mitre: T1059
+    cooldown: 120
+    match:
+      - {field: target, op: startswith_any, value: [/tmp/, /var/tmp/, /dev/shm/]}
+    exclude:
+      any:
+        - {field: pkg_activity, op: eq, value: true}
+        - {field: parent_name, op: in, value: [dpkg, apt, apt-get, aptitude, rpm, dnf, yum, pacman, zypper, pip, pip3, snapd, packagekitd, unattended-upgr, fwupd]}
+        - {field: target, op: regex, value: '^/(var/)?tmp/(\.mount_|pip-|go-build|pytest-of-|\.org\.chromium\.|\.com\.google\.)'}
+    dedupe_by: [target]
+    message: "Ejecucion desde ubicacion temporal: {target} (usuario {username}, padre {parent_name})"
+
+  - id: WLF-1004
+    name: Ejecucion desde Descargas
+    description: Ejecutable o script lanzado directamente desde la carpeta Descargas.
+    severity: medium
+    event_type: process_start
+    mitre: T1204.002
+    cooldown: 300
+    match:
+      - {field: target, op: contains, value: /downloads/}
+    dedupe_by: [target]
+    message: "Ejecucion desde Descargas: {target} (usuario {username}, padre {parent_name})"
+
+  - id: WLF-1005
+    name: Minero de criptomonedas
+    description: Proceso con nombre de minero conocido o conectado a un pool stratum.
+    severity: high
+    event_type: process_start
+    mitre: T1496
+    cooldown: 300
+    match:
+      any:
+        - {field: name, op: in, value: [xmrig, xmr-stak, minerd, cpuminer, ethminer, nbminer, phoenixminer, cgminer, bfgminer, lolminer]}
+        - {field: cmdline, op: regex, value: '(?i)(stratum\+(tcp|ssl)://|--donate-level)'}
+    message: "Posible minero de criptomonedas '{name}' (PID {pid}): {cmdline}"
+
+  - id: WLF-1006
+    name: Cambio en archivos de cuentas o autenticacion
+    description: Modificacion real del contenido de passwd, shadow, sudoers, PAM o sshd_config.
+    severity: high
+    event_type: file_event
+    platforms: [linux]
+    mitre: T1098
+    cooldown: 120
+    match:
+      all:
+        - {field: action, op: in, value: [created, modified, moved]}
+        - {field: content_changed, op: eq, value: true}
+        - any:
+            - {field: path, op: in, value: [/etc/passwd, /etc/shadow, /etc/group, /etc/gshadow, /etc/sudoers, /etc/ld.so.preload, /etc/ssh/sshd_config]}
+            - {field: path, op: startswith_any, value: [/etc/sudoers.d/, /etc/pam.d/]}
+    exclude:
+      all:
+        - {field: pkg_activity, op: eq, value: true}
+        - any:
+            - {field: path, op: in, value: [/etc/passwd, /etc/shadow, /etc/group, /etc/gshadow]}
+            - {field: path, op: startswith, value: /etc/pam.d/}
+    dedupe_by: [path]
+    message: "Archivo de autenticacion modificado: {path}"
+
+  - id: WLF-1007
+    name: Persistencia en perfil de shell
+    description: Cambio de contenido en archivos que se ejecutan al iniciar una shell.
+    severity: medium
+    event_type: file_event
+    platforms: [linux, darwin]
+    mitre: T1546.004
+    cooldown: 300
+    match:
+      all:
+        - {field: action, op: in, value: [created, modified, moved]}
+        - {field: content_changed, op: eq, value: true}
+        - any:
+            - {field: path, op: regex, value: '^(/home/[^/]+|/root|/users/[^/]+)/\.(bashrc|bash_profile|bash_login|profile|zshrc|zshenv|zprofile|bash_logout)$'}
+            - {field: path, op: in, value: [/etc/profile, /etc/bash.bashrc, /etc/environment, /etc/rc.local]}
+            - {field: path, op: startswith, value: /etc/profile.d/}
+    dedupe_by: [path]
+    message: "Archivo de arranque de shell modificado: {path}"
+
+  - id: WLF-1008
+    name: Persistencia via cron, systemd o autostart
+    description: Archivo creado o modificado en ubicaciones de ejecucion automatica.
+    severity: high
+    event_type: file_event
+    mitre: T1053
+    cooldown: 300
+    match:
+      all:
+        - {field: action, op: in, value: [created, modified, moved]}
+        - {field: content_changed, op: eq, value: true}
+        - any:
+            - {field: path, op: startswith_any, value: [/etc/cron.d/, /etc/cron.daily/, /etc/cron.hourly/, /etc/cron.weekly/, /etc/cron.monthly/, /var/spool/cron/, /etc/systemd/system/, /etc/init.d/, /library/launchagents/, /library/launchdaemons/]}
+            - {field: path, op: eq, value: /etc/crontab}
+            - {field: path, op: regex, value: '/(\.config/(autostart|systemd/user)|library/launchagents)/[^/]+$'}
+            - {field: path, op: contains, value: /start menu/programs/startup/}
+    exclude:
+      - {field: pkg_activity, op: eq, value: true}
+    dedupe_by: [path]
+    message: "Elemento de persistencia creado o modificado: {path}"
+
+  - id: WLF-1009
+    name: Cambio en authorized_keys
+    description: Se modifico el contenido de authorized_keys, posible puerta trasera SSH.
+    severity: high
+    event_type: file_event
+    mitre: T1098.004
+    cooldown: 120
+    match:
+      all:
+        - {field: action, op: in, value: [created, modified, moved]}
+        - {field: content_changed, op: eq, value: true}
+        - {field: path, op: regex, value: '/\.ssh/authorized_keys2?$'}
+    dedupe_by: [path]
+    message: "authorized_keys modificado: {path}"
+
+  - id: WLF-1010
+    name: Cifrado masivo de archivos (ransomware)
+    description: Varios archivos distintos con extensiones de ransomware en poco tiempo.
+    severity: critical
+    event_type: file_event
+    mitre: T1486
+    cooldown: 600
+    match:
+      all:
+        - {field: action, op: in, value: [created, moved, modified]}
+        - {field: extension, op: in, value: [.locked, .crypt, .crypted, .encrypted, .enc, .crypto, .locky, .wncry, .wnry, .ryk, .conti, .lockbit, .akira, .royal, .zepto, .cerber]}
+    threshold:
+      count: 8
+      window: 60
+      distinct: path
+    message: "{count} archivos con extension de ransomware en 60 s (ultimo: {path})"
+
+  - id: WLF-1011
+    name: Nota de rescate creada
+    description: Archivo con nombre tipico de nota de ransomware.
+    severity: high
+    event_type: file_event
+    mitre: T1486
+    cooldown: 600
+    match:
+      all:
+        - {field: action, op: in, value: [created, moved]}
+        - field: filename
+          op: regex
+          value: '(how[_ -]?to[_ -]?(decrypt|recover|restore)|decrypt[_ -]?(your[_ -]?)?(files|instructions)|restore[_ -]?(my|your)[_ -]?files|recover[_ -]?your[_ -]?files|files[_ -]?(are[_ -]?)?encrypted|readme[_ -]?to[_ -]?decrypt)'
+    dedupe_by: [directory]
+    message: "Posible nota de rescate: {path}"
+
+  - id: WLF-1012
+    name: Conexion saliente a puerto asociado a backdoors
+    description: Conexion establecida hacia puertos usados habitualmente por shells inversas y troyanos.
+    severity: high
+    event_type: network_connect
+    mitre: T1571
+    cooldown: 300
+    match:
+      all:
+        - {field: remote_port, op: in, value: [4444, 4445, 1337, 31337, 12345, 54321]}
+        - {field: remote_is_loopback, op: eq, value: false}
+    dedupe_by: [process_name, remote_ip, remote_port]
+    message: "Conexion de {process_name} (PID {pid}) a {remote_ip}:{remote_port}"
+
+  - id: WLF-1013
+    name: Conexion externa desde binario en directorio temporal
+    description: Un ejecutable alojado en /tmp, /var/tmp o /dev/shm abrio una conexion a una IP publica.
+    severity: high
+    event_type: network_connect
+    platforms: [linux]
+    mitre: T1071
+    cooldown: 300
+    match:
+      all:
+        - {field: process_path, op: startswith_any, value: [/tmp/, /var/tmp/, /dev/shm/]}
+        - {field: remote_is_private, op: eq, value: false}
+    exclude:
+      - {field: process_path, op: regex, value: '^/(var/)?tmp/(\.mount_|go-build|pytest-of-)'}
+    dedupe_by: [process_path, remote_ip]
+    message: "{process_path} (PID {pid}) conecto a {remote_ip}:{remote_port}"
+
+  - id: WLF-1014
+    name: Payload de inyeccion SQL en peticion web
+    description: Herramienta HTTP de linea de comandos con un patron de inyeccion SQL en sus argumentos.
+    severity: medium
+    event_type: process_start
+    mitre: T1190
+    cooldown: 60
+    match:
+      all:
+        - {field: name, op: in, value: [curl, wget, http, https, httpie]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(union(\s|\+|%20|/\*\*/)+(all(\s|\+|%20)+)?select|(\s|\+|%20)or(\s|\+|%20)+[''"]?1[''"]?(\s|\+|%20)*=(\s|\+|%20)*[''"]?1|sleep\(\s*\d+\s*\)|information_schema)'
+    message: "Patron de inyeccion SQL en {name}: {cmdline}"
+
+  - id: WLF-1015
+    name: Descarga canalizada directamente a una shell
+    description: curl o wget con salida enviada a sh o bash. Los instaladores conocidos estan excluidos.
+    severity: medium
+    event_type: process_start
+    mitre: T1059.004
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [sh, bash, dash, zsh]}
+        - {field: cmdline, op: regex, value: '(?i)\b(curl|wget)\b[^|;]*\|\s*(sudo\s+(-\S+\s+)*)?(ba|da|z)?sh\b'}
+    exclude:
+      - field: cmdline
+        op: regex
+        value: '(?i)(sh\.rustup\.rs|get\.docker\.com|raw\.githubusercontent\.com/(nvm-sh|Homebrew|ohmyzsh)|brew\.sh|install\.python-poetry\.org|astral\.sh|get\.helm\.sh|deb\.nodesource\.com|bun\.sh|deno\.land|ohmyz\.sh|tailscale\.com/install\.sh|get\.sdkman\.io|starship\.rs|get\.k3s\.io|ollama\.com/install\.sh)'
+    message: "Contenido remoto ejecutado sin revision: {cmdline}"
+
+  - id: WLF-1016
+    name: Lectura de credenciales por linea de comandos
+    description: Lectura o copia de shadow/gshadow o de claves privadas SSH mediante utilidades comunes.
+    severity: high
+    event_type: process_start
+    mitre: T1003.008
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [cat, less, more, head, tail, cp, base64, xxd, strings, tar, zip]}
+        - {field: cmdline, op: regex, value: '(?i)(/etc/(shadow|gshadow)\b|\.ssh/id_(rsa|dsa|ecdsa|ed25519)(?!\.pub))'}
+    message: "{name} accede a credenciales sensibles (usuario {username}): {cmdline}"
+
+  - id: WLF-1017
+    name: Borrado de logs del sistema
+    description: Eliminacion o truncado de logs de autenticacion o auditoria.
+    severity: high
+    event_type: process_start
+    platforms: [linux]
+    mitre: T1070.002
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [rm, shred, truncate, unlink, srm, wipe]}
+        - {field: cmdline, op: regex, value: '(?i)/var/log/((auth\.log|secure|syslog|messages|wtmp|btmp|lastlog|kern\.log)(\s|$)|(audit|journal)(/|\s|$))'}
+    exclude:
+      - {field: parent_name, op: in, value: [logrotate, systemd-tmpfiles, journald, systemd-journald]}
+    message: "Borrado de logs ({name}, usuario {username}): {cmdline}"
+
+  - id: WLF-1018
+    name: Bit SUID o SGID asignado
+    description: chmod que activa setuid o setgid sobre un archivo.
+    severity: medium
+    event_type: process_start
+    platforms: [linux, darwin]
+    mitre: T1548.001
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: eq, value: chmod}
+        - {field: cmdline, op: regex, value: '(?i)\bchmod\s+(-\S+\s+)*([ua]?\+s\b|[4-7][0-7]{3}\b)'}
+    message: "Bit SUID/SGID asignado (usuario {username}): {cmdline}"
+
+  - id: WLF-1101
+    name: PowerShell con comando codificado
+    description: PowerShell ejecutado con -EncodedCommand y un payload largo en base64.
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1059.001
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [powershell, pwsh]}
+        - {field: cmdline, op: regex, value: '(?i)\s-(e|ec|enc|encodedcommand)\s+[A-Za-z0-9+/=]{40,}'}
+    message: "PowerShell con comando codificado (usuario {username}, padre {parent_name})"
+
+  - id: WLF-1102
+    name: Eliminacion de copias de seguridad del sistema
+    description: Comandos que borran shadow copies o desactivan la recuperacion de Windows.
+    severity: critical
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1490
+    cooldown: 300
+    match:
+      all:
+        - {field: name, op: in, value: [vssadmin, wmic, bcdedit, wbadmin]}
+        - {field: cmdline, op: regex, value: '(?i)(delete\s+shadows|shadowcopy\s+delete|recoveryenabled\s+no|delete\s+catalog)'}
+    message: "Eliminacion de copias de seguridad: {cmdline}"
+
+  - id: WLF-1103
+    name: Descarga con certutil
+    description: certutil usado para descargar archivos, tecnica habitual de living-off-the-land.
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1105
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: eq, value: certutil}
+        - {field: cmdline, op: regex, value: '(?i)-(urlcache|verifyctl)'}
+    message: "certutil descargando contenido: {cmdline}"
+
+  - id: WLF-1019
+    name: Ejecucion de sqlmap
+    description: sqlmap es una herramienta automatizada de inyeccion SQL.
+    severity: high
+    event_type: process_start
+    mitre: T1190
+    cooldown: 60
+    match:
+      any:
+        - {field: name, op: eq, value: sqlmap}
+        - {field: cmdline, op: contains, value: sqlmap}
+    message: "sqlmap ejecutado por {username} (PID {pid}): {cmdline}"
+
+  - id: WLF-1020
+    name: Script con patrones de inyeccion SQL
+    description: Proceso de scripting con patrones de inyeccion SQL en sus argumentos.
+    severity: medium
+    event_type: process_start
+    mitre: T1190
+    cooldown: 30
+    match:
+      all:
+        - {field: name, op: in, value: [python, python3, ruby, perl, node, php, java]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(union\s+(all\s+)?select|information_schema|1\s*=\s*1|or\s+1\s*=\s*1|sleep\(\d+\)|benchmark\(|load_file\(|into\s+outfile|into\s+dumpfile)'
+    message: "Patron de SQL injection en script {name}: {cmdline}"
+
+  - id: WLF-1021
+    name: Uso sospechoso de sudo
+    description: sudo ejecutado con flags peligrosos o para shells interactivas.
+    severity: high
+    event_type: process_start
+    platforms: [linux, darwin]
+    mitre: T1548.003
+    cooldown: 60
+    match:
+      all:
+        - {field: name, op: eq, value: sudo}
+        - field: cmdline
+          op: regex
+          value: '(?i)(sudo\s+(-\S+\s+)*(bash|sh|zsh|su\s|python|perl|ruby|env\s)|-i\s*$|--shell)'
+    message: "sudo sospechoso por {username}: {cmdline}"
+
+  - id: WLF-1022
+    name: Compresion de datos sensibles
+    description: Herramienta de compresion usada sobre directorios sensibles.
+    severity: medium
+    event_type: process_start
+    mitre: T1560.001
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [tar, zip, 7z, rar, gzip]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(/etc/|/home/|/root/|/var/|passwd|shadow|\.ssh/|\.aws/|\.kube/)'
+    message: "Compresion de datos sensibles ({name}): {cmdline}"
+
+  - id: WLF-1023
+    name: Reconocimiento interno de red
+    description: Uso de herramientas de descubrimiento de red.
+    severity: medium
+    event_type: process_start
+    mitre: T1046
+    cooldown: 120
+    match:
+      any:
+        - {field: name, op: in, value: [arp-scan, netdiscover, nbtscan]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(nmap\s+-s[A-Z]|masscan\s|zmap\s)'
+    message: "Reconocimiento de red ({name}, usuario {username}): {cmdline}"
+
+  - id: WLF-1024
+    name: Carga de modulo del kernel
+    description: insmod o modprobe cargando modulo fuera del arbol estandar.
+    severity: high
+    event_type: process_start
+    platforms: [linux]
+    mitre: T1547.006
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [insmod, modprobe]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(\.(ko|o)(\s|$)|/tmp/|/home/|/dev/shm/)'
+    exclude:
+      - {field: pkg_activity, op: eq, value: true}
+    message: "Carga de modulo del kernel: {cmdline}"
+
+  - id: WLF-1025
+    name: Conexion C2 desde proceso no navegador
+    description: Conexion saliente a puertos comunes de C2 desde proceso no habitual.
+    severity: high
+    event_type: network_connect
+    mitre: T1071
+    cooldown: 300
+    match:
+      all:
+        - {field: remote_port, op: in, value: [8443, 8080, 8888, 9090, 5555, 6666, 7777, 2222]}
+        - {field: remote_is_private, op: eq, value: false}
+        - {field: process_name, op: not_in, value: [chrome, firefox, msedge, brave, opera, vivaldi, slack, discord, teams, code, cursor, spotify, steam]}
+    dedupe_by: [process_name, remote_ip, remote_port]
+    message: "Conexion sospechosa de {process_name} (PID {pid}) a {remote_ip}:{remote_port}"
+
+  - id: WLF-1026
+    name: Nuevo puerto en escucha
+    description: Un proceso abrio un puerto TCP en escucha que no existia antes.
+    severity: medium
+    event_type: listening_port
+    mitre: T1571
+    cooldown: 300
+    match:
+      all:
+        - {field: port, op: gt, value: 1024}
+        - {field: process_name, op: not_in, value: [sshd, httpd, apache2, nginx, node, python, python3, java, docker-proxy, containerd, code, cursor]}
+    dedupe_by: [process_name, port]
+    message: "Nuevo puerto en escucha: {process_name} (PID {pid}) en :{port}"
+
+  - id: WLF-1104
+    name: Ejecucion sospechosa via mshta
+    description: mshta.exe ejecutando contenido remoto o scripts inline.
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1218.005
+    cooldown: 60
+    match:
+      all:
+        - {field: name, op: eq, value: mshta}
+        - field: cmdline
+          op: regex
+          value: '(?i)(http|vbscript|javascript|about:)'
+    message: "mshta con contenido sospechoso: {cmdline}"
+
+  - id: WLF-1105
+    name: Ejecucion via regsvr32 scrobj
+    description: regsvr32 cargando scriptlets remotos (Squiblydoo).
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1218.010
+    cooldown: 60
+    match:
+      all:
+        - {field: name, op: eq, value: regsvr32}
+        - field: cmdline
+          op: regex
+          value: '(?i)(scrobj|/i:|http)'
+    message: "regsvr32 Squiblydoo: {cmdline}"
+
+  - id: WLF-1106
+    name: Deshabilitacion de Windows Defender
+    description: Intento de desactivar Windows Defender via PowerShell o registro.
+    severity: critical
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1562.001
+    cooldown: 300
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)(Set-MpPreference\s+-Disable|DisableRealtimeMonitoring\s+(\$true|1)|DisableAntiSpyware)'
+        - field: cmdline
+          op: regex
+          value: '(?i)reg\s+add\s+.*Windows Defender.*DisableAntiSpyware'
+    message: "Intento de deshabilitar Windows Defender: {cmdline}"
+
+  - id: WLF-1107
+    name: Ejecucion via rundll32 sospechosa
+    description: rundll32 ejecutando DLL desde ubicacion no estandar o con JavaScript.
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1218.011
+    cooldown: 60
+    match:
+      all:
+        - {field: name, op: eq, value: rundll32}
+        - field: cmdline
+          op: regex
+          value: '(?i)(javascript:|http://|https://|\\\\|/tmp/|appdata|temp)'
+    message: "rundll32 sospechoso: {cmdline}"
+
+  - id: WLF-1108
+    name: Bypass AMSI detectado
+    description: Intento de desactivar AMSI (Antimalware Scan Interface) en PowerShell.
+    severity: critical
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1562.001
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [powershell, pwsh]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(amsiInitFailed|AmsiUtils|amsi\.dll|Disable-Amsi|bypass|iex\s*\(|Invoke-Expression)'
+    message: "Posible bypass de AMSI: {cmdline}"
+
+  # ============================================================
+  # SQL INJECTION — Deteccion completa
+  # ============================================================
+
+  - id: WLF-2001
+    name: Herramienta de SQL injection ejecutada
+    description: Ejecucion de una herramienta conocida de inyeccion SQL automatizada.
+    severity: critical
+    event_type: process_start
+    mitre: T1190
+    cooldown: 60
+    match:
+      any:
+        - {field: name, op: in, value: [sqlmap, havij, jsql, bbqsql, nosqlmap, sqlninja, sqlsus, mdb-sql]}
+        - {field: cmdline, op: regex, value: '(?i)(sqlmap|havij|jsql-injection|bbqsql|nosqlmap|sqlninja)'}
+        - {field: target, op: regex, value: '(?i)(sqlmap|havij|jsql|nosqlmap)'}
+    message: "Herramienta de SQL injection '{name}' ejecutada por {username} (PID {pid}): {cmdline}"
+
+  - id: WLF-2002
+    name: Script con payload de SQL injection
+    description: Script o interprete ejecutado con patrones de inyeccion SQL en sus argumentos.
+    severity: high
+    event_type: process_start
+    mitre: T1190
+    cooldown: 30
+    match:
+      all:
+        - {field: name, op: in, value: [python, python3, python3.13, ruby, perl, node, php, java, curl, wget, http, httpie, powershell, pwsh]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(union(\s|%20|\+|/\*\*/)+((all|distinct)(\s|%20|\+)+)?select|;\s*(drop|alter|delete|update|insert)\s+(table|from|into)|(\s|%20)(or|and)(\s|%20)+[''"]?\d+[''"]?(\s|%20)*=(\s|%20)*[''"]?\d+|sleep\(\s*\d+\s*\)|benchmark\s*\(|waitfor\s+delay|load_file\s*\(|into\s+(out|dump)file|information_schema|group_concat\s*\(|concat\s*\(.*select|char\s*\(\d+|0x[0-9a-f]{6,}|exec(\s+|%20)+(xp_|sp_)|UNION%20SELECT|%27|%22.*(%3D|=).*%27)'
+    message: "Patron de SQL injection en {name} (PID {pid}): {cmdline}"
+
+  - id: WLF-2003
+    name: SQL injection via herramienta HTTP
+    description: Peticion HTTP desde linea de comandos con patrones de inyeccion SQL.
+    severity: high
+    event_type: process_start
+    mitre: T1190
+    cooldown: 30
+    match:
+      all:
+        - {field: name, op: in, value: [curl, wget, http, httpie, invoke-webrequest, invoke-restmethod]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(union(\s|\+|%20)+(all(\s|\+|%20)+)?select|information_schema|sleep\(\d|waitfor\s+delay|benchmark\(|1\s*=\s*1|or\s+1=1|''(\s|%20)*(or|and)|%27(\s|%20)*(or|and)|exec\s+xp_cmdshell|load_file|into\s+outfile)'
+    message: "SQL injection via {name}: {cmdline}"
+
+  - id: WLF-2004
+    name: Conexion directa a puerto de base de datos
+    description: Proceso no habitual conectandose a puertos de bases de datos (MySQL, PostgreSQL, MSSQL, Oracle).
+    severity: medium
+    event_type: network_connect
+    mitre: T1190
+    cooldown: 120
+    match:
+      all:
+        - {field: remote_port, op: in, value: [3306, 5432, 1433, 1434, 1521, 27017, 6379, 9200, 5984]}
+        - {field: remote_is_loopback, op: eq, value: false}
+        - {field: process_name, op: not_in, value: [mysql, mysqld, postgres, psql, sqlcmd, mongod, mongosh, redis-server, redis-cli, pgadmin4, dbeaver, datagrip64, tableplus, HeidiSQL]}
+    dedupe_by: [process_name, remote_ip, remote_port]
+    message: "{process_name} (PID {pid}) conecto a base de datos en {remote_ip}:{remote_port}"
+
+  - id: WLF-2005
+    name: Escaneo web automatizado
+    description: Multiples conexiones HTTP salientes rapidas desde una herramienta no navegador (posible escaneo de vulnerabilidades o SQLi).
+    severity: medium
+    event_type: network_connect
+    mitre: T1595.002
+    cooldown: 300
+    match:
+      all:
+        - {field: remote_port, op: in, value: [80, 443, 8080, 8443, 8888]}
+        - {field: remote_is_loopback, op: eq, value: false}
+        - {field: process_name, op: not_in, value: [chrome, firefox, msedge, brave, opera, vivaldi, safari, electron, slack, discord, teams, spotify, code, cursor]}
+    threshold:
+      count: 20
+      window: 60
+      group_by: [process_name, remote_ip]
+    message: "{count} conexiones HTTP de {process_name} a {remote_ip}:{remote_port} en 60s (posible escaneo)"
+
+  - id: WLF-2006
+    name: Ejecucion de sqlmap con opciones de explotacion
+    description: sqlmap ejecutado con flags de explotacion activa (os-shell, os-pwn, file-write).
+    severity: critical
+    event_type: process_start
+    mitre: T1190
+    cooldown: 30
+    match:
+      field: cmdline
+      op: regex
+      value: '(?i)sqlmap.*(--(os-shell|os-pwn|os-cmd|file-write|file-read|file-dest|sql-shell|priv-esc|reg-read|reg-add|reg-del|udf-inject|shared-lib))'
+    message: "sqlmap en modo explotacion (PID {pid}): {cmdline}"
+
+  # ============================================================
+  # ROOTKITS y POST-EXPLOTACION — Indicadores en Windows
+  # ============================================================
+
+  - id: WLF-3001
+    name: Carga de driver sospechoso en Windows
+    description: sc.exe o pnputil creando un servicio de tipo driver de kernel.
+    severity: critical
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1543.003
+    cooldown: 120
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)sc\s+(create|config)\s+.*type=\s*kernel'
+        - field: cmdline
+          op: regex
+          value: '(?i)pnputil\s+.*(-i|-a|/add-driver|/install)'
+        - field: cmdline
+          op: regex
+          value: '(?i)sc\s+start\s+.*\.(sys|drv)'
+    message: "Carga de driver de kernel sospechosa: {cmdline}"
+
+  - id: WLF-3002
+    name: Acceso a LSASS (credential dumping)
+    description: Proceso intentando acceder o dumpear LSASS para extraer credenciales.
+    severity: critical
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1003.001
+    cooldown: 120
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)(procdump.*lsass|rundll32.*comsvcs.*MiniDump|sekurlsa|lsass\.dmp|lsass.*\.dmp)'
+        - field: cmdline
+          op: regex
+          value: '(?i)(mimikatz|kiwi|sekurlsa::logonpasswords|privilege::debug)'
+        - {field: name, op: in, value: [mimikatz, procdump, procdump64]}
+    message: "Posible credential dumping (LSASS): {cmdline}"
+
+  - id: WLF-3003
+    name: Inyeccion de DLL sospechosa
+    description: Proceso usando tecnicas de DLL injection o process hollowing.
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1055.001
+    cooldown: 60
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)(rundll32.*javascript|mavinject|remotethread|createremotethread)'
+        - field: cmdline
+          op: regex
+          value: '(?i)(inject.*dll|dll.*inject|hollowing|process.*hollow)'
+    message: "Posible inyeccion de DLL/proceso: {cmdline}"
+
+  - id: WLF-3004
+    name: Herramienta de movimiento lateral
+    description: Uso de herramientas de acceso remoto tipicas de post-explotacion.
+    severity: high
+    event_type: process_start
+    mitre: T1021
+    cooldown: 120
+    match:
+      any:
+        - {field: name, op: in, value: [psexec, psexec64, psexesvc, paexec, smbexec, wmiexec, atexec, dcomexec, winexe]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(psexec|wmiexec|smbexec|atexec|dcomexec|evil-winrm|winrm.*-r:)'
+    message: "Herramienta de movimiento lateral '{name}': {cmdline}"
+
+  - id: WLF-3005
+    name: Web shell detectada
+    description: Servidor web o interprete creando shells o ejecutando comandos del sistema.
+    severity: critical
+    event_type: process_start
+    mitre: T1505.003
+    cooldown: 60
+    match:
+      all:
+        - {field: parent_name, op: in, value: [httpd, apache2, nginx, w3wp, tomcat, java, php-fpm, php-cgi, php, node, iisexpress]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(cmd\.exe|powershell|bash|sh\s+-c|whoami|net\s+user|net\s+localgroup|ipconfig|ifconfig|id\b|uname|cat\s+/etc|type\s+c:\\|systeminfo|wget|curl|certutil)'
+    message: "Posible web shell: proceso hijo de {parent_name} ejecutando '{name}': {cmdline}"
+
+  - id: WLF-3006
+    name: Modificacion del registro para persistencia
+    description: Cambio en claves de registro de autoarranque (Run, RunOnce, Services).
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1547.001
+    cooldown: 120
+    match:
+      all:
+        - {field: name, op: in, value: [reg, regedit]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(reg\s+add\s+.*\\(Run|RunOnce|Winlogon|Image File Execution|AppInit_DLLs|Shell|Userinit|CurrentVersion\\Explorer|Services\\))'
+    message: "Modificacion de registro de persistencia: {cmdline}"
+
+  - id: WLF-3007
+    name: WMI usado para ejecucion remota
+    description: WMIC o PowerShell WMI usado para ejecutar procesos remotamente.
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1047
+    cooldown: 120
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)wmic\s+.*/node:.*process\s+call\s+create'
+        - field: cmdline
+          op: regex
+          value: '(?i)(Invoke-WmiMethod|Invoke-CimMethod).*-ClassName\s+Win32_Process.*Create'
+    message: "Ejecucion remota via WMI: {cmdline}"
+
+  - id: WLF-3008
+    name: Deshabilitacion de firewall
+    description: Intento de desactivar el firewall de Windows.
+    severity: high
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1562.004
+    cooldown: 300
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)netsh\s+advfirewall\s+set\s+.*state\s+off'
+        - field: cmdline
+          op: regex
+          value: '(?i)Set-NetFirewallProfile.*-Enabled\s+False'
+    message: "Intento de deshabilitar firewall: {cmdline}"
+
+  - id: WLF-3009
+    name: Deshabilitacion de logs y auditoria
+    description: Intento de borrar logs de eventos o deshabilitar auditoria en Windows.
+    severity: critical
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1070.001
+    cooldown: 300
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)wevtutil\s+(cl|clear-log)\s+'
+        - field: cmdline
+          op: regex
+          value: '(?i)(Clear-EventLog|Remove-EventLog)'
+        - field: cmdline
+          op: regex
+          value: '(?i)auditpol\s+/set\s+.*(/success:disable|/failure:disable)'
+    message: "Intento de borrar logs o deshabilitar auditoria: {cmdline}"
+
+  - id: WLF-3010
+    name: Creacion de usuario oculto o elevacion
+    description: Creacion de usuario con nombre sospechoso o adicion a grupo de administradores.
+    severity: critical
+    event_type: process_start
+    platforms: [windows]
+    mitre: T1136.001
+    cooldown: 120
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)net\s+(user|localgroup)\s+.*(/add|add)'
+        - field: cmdline
+          op: regex
+          value: '(?i)(New-LocalUser|Add-LocalGroupMember.*Administrators)'
+    message: "Creacion/modificacion de usuario: {cmdline}"
+
+  # ============================================================
+  # ROOTKITS en Linux — Indicadores
+  # ============================================================
+
+  - id: WLF-3011
+    name: Modificacion de ld.so.preload (rootkit userspace)
+    description: Cambio en ld.so.preload permite interceptar funciones de libc (rootkit clasico).
+    severity: critical
+    event_type: file_event
+    platforms: [linux]
+    mitre: T1574.006
+    cooldown: 300
+    match:
+      all:
+        - {field: action, op: in, value: [created, modified, moved]}
+        - {field: path, op: eq, value: /etc/ld.so.preload}
+    exclude:
+      - {field: pkg_activity, op: eq, value: true}
+    message: "ld.so.preload modificado (posible rootkit userspace): {path}"
+
+  - id: WLF-3012
+    name: Archivo oculto creado en directorio del sistema
+    description: Archivo con nombre que empieza por punto creado en ubicaciones criticas.
+    severity: medium
+    event_type: file_event
+    platforms: [linux]
+    mitre: T1564.001
+    cooldown: 120
+    match:
+      all:
+        - {field: action, op: in, value: [created]}
+        - {field: path, op: startswith_any, value: [/usr/bin/, /usr/sbin/, /usr/lib/, /usr/local/bin/, /var/]}
+        - {field: filename, op: startswith, value: .}
+    dedupe_by: [path]
+    message: "Archivo oculto creado en directorio del sistema: {path}"
+
+  - id: WLF-3013
+    name: Binario del sistema reemplazado
+    description: Cambio en hash de binarios criticos del sistema (posible rootkit o trojan).
+    severity: critical
+    event_type: file_event
+    platforms: [linux]
+    mitre: T1036.005
+    cooldown: 300
+    match:
+      all:
+        - {field: action, op: in, value: [modified, moved]}
+        - {field: content_changed, op: eq, value: true}
+        - {field: path, op: regex, value: '^/(usr/)?(s?bin)/(ls|ps|netstat|ss|top|find|login|su|sudo|passwd|ssh|sshd|lsmod|modinfo|bash|sh)$'}
+    exclude:
+      - {field: pkg_activity, op: eq, value: true}
+    message: "Binario critico del sistema modificado (posible rootkit): {path}"
+
+  - id: WLF-3014
+    name: Proceso oculto detectado indirectamente
+    description: Uso de comandos para ocultar procesos o verificar procesos ocultos.
+    severity: high
+    event_type: process_start
+    platforms: [linux]
+    mitre: T1014
+    cooldown: 120
+    match:
+      any:
+        - field: cmdline
+          op: regex
+          value: '(?i)(unhide|chkrootkit|rkhunter|rootkit|hidden.*proc|/proc/\d+/exe)'
+        - field: cmdline
+          op: regex
+          value: '(?i)mount\s+.*-o\s+.*bind.*/proc'
+    message: "Actividad relacionada con procesos ocultos/rootkits: {cmdline}"
+
+  - id: WLF-3015
+    name: Herramienta de post-explotacion Linux
+    description: Ejecucion de herramientas conocidas de escalamiento y post-explotacion.
+    severity: high
+    event_type: process_start
+    platforms: [linux]
+    mitre: T1068
+    cooldown: 60
+    match:
+      any:
+        - {field: name, op: in, value: [linpeas, winpeas, linenum, lse, pspy, chisel, ligolo, socat]}
+        - field: cmdline
+          op: regex
+          value: '(?i)(linpeas|linenum|linux-exploit-suggester|linux-smart-enumeration|pspy|les\.sh)'
+        - field: target
+          op: regex
+          value: '(?i)(linpeas|linenum|lse\.sh|les\.sh|pspy)'
+    message: "Herramienta de post-explotacion: {name} ({cmdline})"
+
+  # ============================================================
+  # ANOMALIAS Y COMPORTAMIENTO BASADO EN TIEMPO ("IA" Heuristica)
+  # ============================================================
+
+  - id: WLF-4001
+    name: Actividad sospechosa fuera de horario
+    description: Ejecucion de procesos administrativos fuera del horario normal de oficina (8:00 a 18:00).
+    severity: medium
+    event_type: process_start
+    mitre: T1059
+    cooldown: 180
+    match:
+      all:
+        - {field: time, op: out_of_hours, value: "08:00-18:00"}
+        - {field: name, op: in, value: [powershell, pwsh, cmd, wmic, bash, sh, psexec, mstsc]}
+    message: "Actividad inusual fuera de horario ({name} ejecutado por {username} a las {time})"

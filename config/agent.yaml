@@ -1,0 +1,46 @@
+agent:
+  rules_file: rules.yaml
+  heartbeat_interval: 30
+
+server:
+  url: http://127.0.0.1:8000
+  secret_key: ""
+  send_interval: 3
+  batch_size: 200
+  timeout: 10
+  verify_tls: true
+
+buffer:
+  max_events: 50000
+
+telemetry:
+  forward: [process_start, network_connect, file_event, listening_port]
+  max_per_minute: 300
+
+allowlist:
+  rule_ids: []
+  process_names: []
+  paths: []
+  command_patterns: []
+
+monitors:
+  processes:
+    enabled: true
+    scan_interval: 0.5
+    capture_cmdline: true
+  files:
+    enabled: true
+    paths: auto
+    extra_paths: []
+    ignore_patterns: []
+    debounce: 1.5
+  network:
+    enabled: true
+    scan_interval: 3
+    include_loopback: false
+  system:
+    enabled: true
+    scan_interval: 30
+  listening_ports:
+    enabled: true
+    scan_interval: 10

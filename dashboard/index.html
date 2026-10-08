@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wolffy EDR</title>
+    <link rel="stylesheet" href="/static/app.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233fb6a8' stroke-width='2'><path d='M12 2L3 7v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V7l-9-5z'/></svg>">
+</head>
+<body>
+    <div class="shell">
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 2L8 7 3 8l2 5-3 5 5 2 3 2 2-3 2 3 3-2 5-2-3-5 2-5-5-1z" fill="rgba(63,182,168,0.15)" stroke="currentColor"/>
+                    <circle cx="9" cy="11" r="1" fill="currentColor" stroke="none"/>
+                    <circle cx="15" cy="11" r="1" fill="currentColor" stroke="none"/>
+                    <path d="M9 15c1.5 2 4.5 2 6 0" stroke-linecap="round"/>
+                </svg>
+                <div><span class="brand-name">WOLFFY</span><span class="brand-tag">EDR</span></div>
+            </div>
+            <nav id="nav">
+                <button class="nav-item" data-view="overview">
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="nav-icon"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/></svg>
+                    Resumen
+                </button>
+                <button class="nav-item" data-view="alerts">
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="nav-icon"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                    Alertas
+                </button>
+                <button class="nav-item" data-view="agents">
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="nav-icon"><path d="M13 7H7v6h6V7z"/><path fill-rule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5h10v10H5V5z" clip-rule="evenodd"/></svg>
+                    Agentes
+                </button>
+                <button class="nav-item" data-view="events">
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="nav-icon"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+                    Eventos
+                </button>
+                <button class="nav-item" data-view="rules">
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="nav-icon"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/></svg>
+                    Reglas
+                </button>
+            </nav>
+            <div class="sidebar-foot"><span id="conn" class="conn">Conectando</span></div>
+        </aside>
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button id="menu-toggle" class="btn icon-btn menu-toggle" aria-label="Menu">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+                    </button>
+                    <h1 id="title">Resumen</h1>
+                </div>
+                <div class="topbar-actions">
+                    <div class="search-box">
+                        <svg viewBox="0 0 20 20" fill="currentColor" class="search-icon"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+                        <input id="search-input" type="text" placeholder="Buscar alertas, eventos, IPs..." autocomplete="off">
+                    </div>
+                    <span id="updated" class="muted"></span>
+                    <button id="purge-btn" class="btn danger" title="Limpiar Base de Datos">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" style="vertical-align: middle;"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                    </button>
+                    <button id="refresh" class="btn">Actualizar</button>
+                </div>
+            </header>
+            <section id="view"></section>
+        </main>
+    </div>
+    <div id="login" class="modal" hidden>
+        <form id="login-form" class="modal-box">
+            <h2>Acceso al dashboard</h2>
+            <p class="muted">Introduce el token del servidor. Puedes verlo con <code>python wolffy.py token</code>.</p>
+            <input id="token-input" type="password" autocomplete="off" placeholder="Token" required>
+            <p id="login-error" class="error" hidden>Token invalido.</p>
+            <button type="submit" class="btn primary">Entrar</button>
+        </form>
+    </div>
+    <div id="toasts" class="toast-container"></div>
+    <div id="search-results" class="search-overlay" hidden></div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
